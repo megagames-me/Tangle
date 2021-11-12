@@ -32,6 +32,9 @@ class Tangle {
         this._nextSetterID = 0;
         this._setterInfosByVariableName = {};   //  { varName: { setterID:7, setter:function (v) { } }, ... }
         this._varargConstructorsByArgCount = [];
+        this.initializeElements();
+        this.setModel(modelClass);
+
     }
 
     
@@ -41,17 +44,15 @@ class Tangle {
     //
     // construct
 
-    initializeElements();
-    setModel(modelClass);
-    return tangle;
+    
 
 
     //----------------------------------------------------------
     //
     // elements
 
-    function initializeElements() {
-        var elements = rootElement.getElementsByTagName("*");
+    initializeElements() {
+        var elements = this.element.getElementsByTagName("*");
         var interestingElements = [];
         
         // build a list of elements with class or data-var attributes
@@ -78,7 +79,7 @@ class Tangle {
             var classAttribute = element.getAttribute("class");
             if (classAttribute) {
                 var classNames = classAttribute.split(" ");
-                views = getViewsForElement(element, classNames, varNames);
+                views = this.getViewsForElement(element, classNames, varNames);
             }
             
             if (!varNames) { continue; }
@@ -87,31 +88,31 @@ class Tangle {
             if (views) {
                 for (var j = 0; j < views.length; j++) {
                     if (!views[j].update) { continue; }
-                    addViewSettersForElement(element, varNames, views[j]);
+                    this.addViewSettersForElement(element, varNames, views[j]);
                     didAddSetter = true;
                 }
             }
             
             if (!didAddSetter) {
                 var formatAttribute = element.getAttribute("data-format");
-                var formatter = getFormatterForFormat(formatAttribute, varNames);
-                addFormatSettersForElement(element, varNames, formatter);
+                var formatter = this.getFormatterForFormat(formatAttribute, varNames);
+                this.addFormatSettersForElement(element, varNames, formatter);
             }
         }
     }
             
-    function getViewsForElement(element, classNames, varNames) {   // initialize classes
+    getViewsForElement(element, classNames, varNames) {   // initialize classes
         var views = null;
         
         for (var i = 0, length = classNames.length; i < length; i++) {
             var clas = Tangle.classes[classNames[i]];
             if (!clas) { continue; }
             
-            var options = getOptionsForElement(element);
-            var args = [ element, options, tangle ];
+            var options = this.getOptionsForElement(element);
+            var args = [ element, options, this ];
             if (varNames) { args = args.concat(varNames); }
             
-            var view = constructClass(clas, args);
+            var view = this.constructClass(clas, args);
             
             if (!views) { views = []; }
             views.push(view);
@@ -120,7 +121,7 @@ class Tangle {
         return views;
     }
     
-    function getOptionsForElement(element) {   // might use dataset someday
+    getOptionsForElement(element) {   // might use dataset someday
         var options = {};
 
         var attributes = element.attributes;
@@ -137,22 +138,22 @@ class Tangle {
         return options;   
     }
     
-    function constructClass(clas, args) {
+    constructClass(clas, args) {
         if (typeof clas !== "function") {  // class is prototype object
-            var View = function () { };
-            View.prototype = clas;
+            class View {}
+            View.constructor = clas;
             var view = new View();
             if (view.initialize) { view.initialize.apply(view,args); }
             return view;
         }
         else {  // class is constructor function, which we need to "new" with varargs (but no built-in way to do so)
-            var ctor = _varargConstructorsByArgCount[args.length];
+            var ctor = this._varargConstructorsByArgCount[args.length];
             if (!ctor) {
                 var ctorArgs = [];
                 for (var i = 0; i < args.length; i++) { ctorArgs.push("args[" + i + "]"); }
                 var ctorString = "(function (clas,args) { return new clas(" + ctorArgs.join(",") + "); })";
                 ctor = eval(ctorString);   // nasty
-                _varargConstructorsByArgCount[args.length] = ctor;   // but cached
+                this._varargConstructorsByArgCount[args.length] = ctor;   // but cached
             }
             return ctor(clas,args);
         }
@@ -163,17 +164,17 @@ class Tangle {
     //
     // formatters
 
-    function getFormatterForFormat(formatAttribute, varNames) {
+    getFormatterForFormat(formatAttribute, varNames) {
         if (!formatAttribute) { formatAttribute = "default"; }
 
-        var formatter = getFormatterForCustomFormat(formatAttribute, varNames);
-        if (!formatter) { formatter = getFormatterForSprintfFormat(formatAttribute, varNames); }
-        if (!formatter) { log("Tangle: unknown format: " + formatAttribute); formatter = getFormatterForFormat(null,varNames); }
+        var formatter = this.getFormatterForCustomFormat(formatAttribute, varNames);
+        if (!formatter) { formatter = this.getFormatterForSprintfFormat(formatAttribute, varNames); }
+        if (!formatter) { this.log("Tangle: unknown format: " + formatAttribute); formatter = this.getFormatterForFormat(null,varNames); }
 
         return formatter;
     }
         
-    function getFormatterForCustomFormat(formatAttribute, varNames) {
+    getFormatterForCustomFormat(formatAttribute, varNames) {
         var components = formatAttribute.split(" ");
         var formatName = components[0];
         if (!formatName) { return null; }
@@ -195,7 +196,7 @@ class Tangle {
         }
         else {  // multiple variables
             formatter = function () {
-                var values = getValuesForVariables(varNames);
+                var values = this.getValuesForVariables(varNames);
                 var args = values.concat(params);
                 return format.apply(null, args);
             };
@@ -203,7 +204,8 @@ class Tangle {
         return formatter;
     }
     
-    function getFormatterForSprintfFormat(formatAttribute, varNames) {
+    
+    getFormatterForSprintfFormat(formatAttribute, varNames) {
         if (!sprintf || !formatAttribute.test(/\%/)) { return null; }
 
         var formatter;
@@ -227,23 +229,23 @@ class Tangle {
     //
     // setters
     
-    function addViewSettersForElement(element, varNames, view) {   // element has a class with an update method
+    addViewSettersForElement(element, varNames, view) {   // element has a class with an update method
         var setter;
         if (varNames.length <= 1) {
             setter = function (value) { view.update(element, value); };
         }
         else {
             setter = function () {
-                var values = getValuesForVariables(varNames);
+                var values = this.getValuesForVariables(varNames);
                 var args = [ element ].concat(values);
                 view.update.apply(view,args);
             };
         }
 
-        addSetterForVariables(setter, varNames);
+        this.addSetterForVariables(setter, varNames);
     }
 
-    function addFormatSettersForElement(element, varNames, formatter) {  // tangle is injecting a formatted value itself
+    addFormatSettersForElement(element, varNames, formatter) {  // tangle is injecting a formatted value itself
         var span = null;
         var setter = function (value) {
             if (!span) { 
@@ -253,29 +255,29 @@ class Tangle {
             span.innerHTML = formatter(value);
         };
 
-        addSetterForVariables(setter, varNames);
+        this.addSetterForVariables(setter, varNames);
     }
     
-    function addSetterForVariables(setter, varNames) {
-        var setterInfo = { setterID:_nextSetterID, setter:setter };
-        _nextSetterID++;
+    addSetterForVariables(setter, varNames) {
+        var setterInfo = { setterID:this._nextSetterID, setter:setter };
+        this._nextSetterID++;
 
         for (var i = 0; i < varNames.length; i++) {
             var varName = varNames[i];
-            if (!_setterInfosByVariableName[varName]) { _setterInfosByVariableName[varName] = []; }
-            _setterInfosByVariableName[varName].push(setterInfo);
+            if (!this._setterInfosByVariableName[varName]) { this._setterInfosByVariableName[varName] = []; }
+            this._setterInfosByVariableName[varName].push(setterInfo);
         }
     }
 
-    function applySettersForVariables(varNames) {
+    applySettersForVariables(varNames) {
         var appliedSetterIDs = {};  // remember setterIDs that we've applied, so we don't call setters twice
     
         for (var i = 0, ilength = varNames.length; i < ilength; i++) {
             var varName = varNames[i];
-            var setterInfos = _setterInfosByVariableName[varName];
+            var setterInfos = this._setterInfosByVariableName[varName];
             if (!setterInfos) { continue; }
             
-            var value = _model[varName];
+            var value = this._model[varName];
             
             for (var j = 0, jlength = setterInfos.length; j < jlength; j++) {
                 var setterInfo = setterInfos[j];
@@ -292,41 +294,41 @@ class Tangle {
     //
     // variables
 
-    function getValue(varName) {
-        var value = _model[varName];
+    getValue(varName) {
+        var value = this._model[varName];
         if (value === undefined) { log("Tangle: unknown variable: " + varName);  return 0; }
         return value;
     }
 
-    function setValue(varName, value) {
+    setValue(varName, value) {
         var obj = {};
         obj[varName] = value;
-        setValues(obj);
+        this.setValues(obj);
     }
 
-    function setValues(obj) {
+    setValues(obj) {
         var changedVarNames = [];
 
         for (var varName in obj) {
             var value = obj[varName];
-            var oldValue = _model[varName];
-            if (oldValue === undefined) { log("Tangle: setting unknown variable: " + varName);  continue; }
+            var oldValue = this._model[varName];
+            if (oldValue === undefined) { this.log("Tangle: setting unknown variable: " + varName);  continue; }
             if (oldValue === value) { continue; }  // don't update if new value is the same
 
-            _model[varName] = value;
+            this._model[varName] = value;
             changedVarNames.push(varName);
         }
         
         if (changedVarNames.length) {
-            applySettersForVariables(changedVarNames);
-            updateModel();
+            this.applySettersForVariables(changedVarNames);
+            this.updateModel();
         }
     }
     
-    function getValuesForVariables(varNames) {
+    getValuesForVariables(varNames) {
         var values = [];
         for (var i = 0, length = varNames.length; i < length; i++) {
-            values.push(getValue(varNames[i]));
+            values.push(this.getValue(varNames[i]));
         }
         return values;
     }
@@ -336,17 +338,21 @@ class Tangle {
     //
     // model
 
-    function setModel(modelClass) {
-        var ModelClass = function () { };
-        ModelClass.prototype = modelClass;
-        _model = new ModelClass;
+    setModel(modelClass) {
+        class ModelClass {
+           
+        }
+        ModelClass.constructor = modelClass;
+        this._model = new ModelClass;
 
-        updateModel(true);  // initialize and update
+        this.updateModel(true);  // initialize and update
     }
     
-    function updateModel(shouldInitialize) {
-        var ShadowModel = function () {};  // make a shadow object, so we can see exactly which properties changed
-        ShadowModel.prototype = _model;
+    updateModel(shouldInitialize) {
+        class ShadowModel {
+            
+        } // make a shadow object, so we can see exactly which properties changed
+        ShadowModel.constructor = this._model;
         var shadowModel = new ShadowModel;
         
         if (shouldInitialize) { shadowModel.initialize(); }
@@ -355,13 +361,13 @@ class Tangle {
         var changedVarNames = [];
         for (var varName in shadowModel) {
             if (!shadowModel.hasOwnProperty(varName)) { continue; }
-            if (_model[varName] === shadowModel[varName]) { continue; }
+            if (this._model[varName] === shadowModel[varName]) { continue; }
             
-            _model[varName] = shadowModel[varName];
+            this._model[varName] = shadowModel[varName];
             changedVarNames.push(varName);
         }
         
-        applySettersForVariables(changedVarNames);
+        this.applySettersForVariables(changedVarNames);
     }
 
 
@@ -369,7 +375,7 @@ class Tangle {
     //
     // debug
 
-    function log (msg) {
+    log(msg) {
         if (window.console) { window.console.log(msg); }
     }
 
