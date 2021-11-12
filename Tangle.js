@@ -25,19 +25,16 @@
 //  Tangle.formats.myFormat = function (value) { return "..."; };
 //
 
-var Tangle = this.Tangle = function (rootElement, modelClass) {
+class Tangle {
+    constructor(rootElement, modelClass) {
+        this.element = rootElement;
+        this._model = {};
+        this._nextSetterID = 0;
+        this._setterInfosByVariableName = {};   //  { varName: { setterID:7, setter:function (v) { } }, ... }
+        this._varargConstructorsByArgCount = [];
+    }
 
-    var tangle = this;
-    tangle.element = rootElement;
-    tangle.setModel = setModel;
-    tangle.getValue = getValue;
-    tangle.setValue = setValue;
-    tangle.setValues = setValues;
-
-    var _model;
-    var _nextSetterID = 0;
-    var _setterInfosByVariableName = {};   //  { varName: { setterID:7, setter:function (v) { } }, ... }
-    var _varargConstructorsByArgCount = [];
+    
 
 
     //----------------------------------------------------------
